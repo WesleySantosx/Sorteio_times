@@ -1,3 +1,5 @@
+import {drawTeams} from './draw.js';
+import {renderResults, resultText} from './results.js';
 import {estimate} from './estimate.js';
 import {updateConfig} from './settings.js';
 import {createState, uid, saveParticipant} from './model.js';
@@ -26,7 +28,7 @@ function render() {
   $('#sport-label').textContent = sport().name; $('#count').textContent = sport().participants.length;
   $('#primary').innerHTML = options();$('#secondary').innerHTML = options('<option value="">Nenhuma</option>');$('#position-filter').innerHTML = options('<option value="">Todas as posições</option>');
   document.querySelectorAll('[data-sport]').forEach(b => b.classList.toggle('active', b.dataset.sport === selected));
-  renderList();renderSettings();renderEstimate();
+  renderList();renderSettings();renderEstimate();renderResults($('#result-content'),sport());$('#copy').disabled = $('#print').disabled = !sport().result;
 }
 function changed() {persist();render();}
 document.querySelectorAll('[data-sport]').forEach(b => b.addEventListener('click', () => {selected = b.dataset.sport;state.selected = selected;$('#search').value = '';resetForm();changed();}));
@@ -73,3 +75,10 @@ $('#settings-form').addEventListener('submit', event => {
     updateConfig(sport(), {size:Number($('#team-size').value),teams:$('#manual-teams').value === '' ? null : Number($('#manual-teams').value),positions});changed();notify('Configuração salva.');
   } catch(error) {notify(error.message);}
 });
+
+$('#draw').addEventListener('click', () => {
+  if(sport().result && !confirm('Substituir o resultado anterior por um novo sorteio?')) return;
+  try {sport().result=drawTeams(sport());changed();tab('results');notify('Equipes sorteadas!');} catch(error){notify(error.message);}
+});
+$('#copy').addEventListener('click', async () => {try {await navigator.clipboard.writeText(resultText(sport()));notify('Resultado copiado.');} catch {const area=document.createElement('textarea');area.value=resultText(sport());area.setAttribute('aria-label','Resultado para copiar manualmente');$('#result-content').prepend(area);area.focus();area.select();notify('Cópia automática indisponível. Selecione e copie o texto exibido.');}});
+$('#print').addEventListener('click', () => {tab('results');window.print();});
