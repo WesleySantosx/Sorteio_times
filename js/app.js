@@ -1,12 +1,15 @@
 import {createState, uid, saveParticipant} from './model.js';
-let state = createState();
+import {loadState, storeState, parseBackup, downloadBackup} from './storage.js';
+let loadError;
+let state;
+try {state = loadState();} catch(error) {state = createState();loadError = error.message;}
 let selected = state.selected;
 const $ = selector => document.querySelector(selector);
 const sport = () => state.sports[selected];
 const escape = value => String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let toastTimer;
 function notify(message) {$('#toast').textContent = message; $('#toast').hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => $('#toast').hidden = true, 5500);}
-function persist() {}
+function persist() {try {storeState(state);} catch {notify('Não foi possível salvar no navegador. Exporte um backup antes de sair.');}}
 function tab(id) {document.querySelectorAll('.panel').forEach(panel => panel.hidden = panel.id !== id);document.querySelectorAll('[data-tab]').forEach(button => button.classList.toggle('active', button.dataset.tab === id));}
 document.querySelectorAll('[data-tab]').forEach(button => button.addEventListener('click', () => tab(button.dataset.tab)));
 function options(blank = '') {return blank + sport().config.positions.map(p => `<option value="${escape(p.id)}">${escape(p.name)}</option>`).join('');}
@@ -34,3 +37,12 @@ $('#participant-list').addEventListener('click', event => {
   if (remove && confirm('Excluir este participante?')) {sport().participants = sport().participants.filter(p => p.id !== remove.dataset.delete);sport().revision++;resetForm();changed();notify('Participante excluído.');}
 });
 render();
+
+$('#export').addEventListener('click', () => downloadBackup(state));
+$('#import').addEventListener('click', () => $('#backup-file').click());
+$('#backup-file').addEventListener('change', async event => {
+  const file = event.target.files[0]; if (!file) return;
+  try {if (file.size > 10000000) throw new Error('O backup deve ter no máximo 10 MB.');const imported = parseBackup(await file.text());if (!confirm('Substituir todos os dados deste navegador pelo backup?')) return;storeState(imported);state = imported;selected = state.selected;resetForm();render();notify('Backup importado.');} catch(error) {notify(error.message);} finally {event.target.value = '';}
+});
+$('#clear').addEventListener('click', () => {if (confirm('Apagar participantes, configurações e resultados de TODAS as modalidades? Exporte um backup antes de continuar.')) {const empty = createState();try {storeState(empty);state = empty;selected = state.selected;resetForm();render();notify('Dados apagados.');} catch {notify('Não foi possível apagar os dados armazenados.');}}});
+if (loadError) {notify('Dados locais não puderam ser lidos. Exporte ou recupere um backup antes de cadastrar novos dados.');}
