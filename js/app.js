@@ -1,3 +1,5 @@
+import {estimate} from './estimate.js';
+import {updateConfig} from './settings.js';
 import {createState, uid, saveParticipant} from './model.js';
 import {loadState, storeState, parseBackup, downloadBackup} from './storage.js';
 let loadError;
@@ -24,7 +26,7 @@ function render() {
   $('#sport-label').textContent = sport().name; $('#count').textContent = sport().participants.length;
   $('#primary').innerHTML = options();$('#secondary').innerHTML = options('<option value="">Nenhuma</option>');$('#position-filter').innerHTML = options('<option value="">Todas as posições</option>');
   document.querySelectorAll('[data-sport]').forEach(b => b.classList.toggle('active', b.dataset.sport === selected));
-  renderList();
+  renderList();renderSettings();renderEstimate();
 }
 function changed() {persist();render();}
 document.querySelectorAll('[data-sport]').forEach(b => b.addEventListener('click', () => {selected = b.dataset.sport;state.selected = selected;$('#search').value = '';resetForm();changed();}));
@@ -46,3 +48,28 @@ $('#backup-file').addEventListener('change', async event => {
 });
 $('#clear').addEventListener('click', () => {if (confirm('Apagar participantes, configurações e resultados de TODAS as modalidades? Exporte um backup antes de continuar.')) {const empty = createState();try {storeState(empty);state = empty;selected = state.selected;resetForm();render();notify('Dados apagados.');} catch {notify('Não foi possível apagar os dados armazenados.');}}});
 if (loadError) {notify('Dados locais não puderam ser lidos. Exporte ou recupere um backup antes de cadastrar novos dados.');}
+
+function renderEstimate() {
+  const e = estimate(sport().participants, sport().config);
+  $('#teams-count').textContent = e.teams;$('#reserves-count').textContent = e.teams ? e.reserves : '—';
+  $('#estimate-detail').textContent = `${sport().config.size} titulares por equipe`;
+  $('#draw-message').textContent = e.error || (e.limited ? `Limite de posições obrigatórias: ${e.feasible} equipe(s), com ${e.reserves} reserva(s).` : `${e.teams * sport().config.size} titulares e ${e.reserves} reserva(s). Sem avaliação de habilidade.`);
+  $('#draw').disabled = !!e.error;
+}
+function positionRow(p) {
+  const row = document.createElement('div');row.className = 'position-row';row.dataset.id = p.id;
+  row.innerHTML = `<label>Nome da posição<input class="position-name" maxlength="60" required value="${escape(p.name)}"></label><label>Vagas<input class="position-slots" type="number" min="0" max="100" required value="${p.slots}"></label><label class="check"><input type="checkbox" class="position-mandatory" ${p.mandatory ? 'checked' : ''}> Exigir aptidão</label><button type="button" class="remove-position danger">Remover</button>`;
+  return row;
+}
+function renderSettings() {
+  $('#team-size').value = sport().config.size;$('#manual-teams').value = sport().config.teams ?? '';
+  $('#position-settings').replaceChildren(...sport().config.positions.map(positionRow));
+}
+$('#add-position').addEventListener('click', () => {if ($('#position-settings').children.length >= 30) return notify('Limite de 30 posições.');$('#position-settings').append(positionRow({id:uid(),name:'',slots:0,mandatory:false}));$('#position-settings').lastElementChild.querySelector('input').focus();});
+$('#position-settings').addEventListener('click', event => {if (event.target.closest('.remove-position') && confirm('Remover esta posição da configuração? A alteração só será aplicada ao salvar.')) event.target.closest('.position-row').remove();});
+$('#settings-form').addEventListener('submit', event => {
+  event.preventDefault();try {
+    const positions = [...document.querySelectorAll('.position-row')].map(row => ({id:row.dataset.id,name:row.querySelector('.position-name').value.trim(),slots:Number(row.querySelector('.position-slots').value),mandatory:row.querySelector('.position-mandatory').checked}));
+    updateConfig(sport(), {size:Number($('#team-size').value),teams:$('#manual-teams').value === '' ? null : Number($('#manual-teams').value),positions});changed();notify('Configuração salva.');
+  } catch(error) {notify(error.message);}
+});
